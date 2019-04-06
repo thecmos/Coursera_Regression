@@ -1,0 +1,235 @@
+---
+title: "Cars mpg"
+author: "TheCmos"
+date: "March 3, 2019"
+output:
+  word_document: default
+  pdf_document: default
+  html_document:
+    fig_width: 6
+    fig_height: 4
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**SUMMARY**
+
+The purpose of this report is to answer the two questions posed at the Motor Trend Magazine, based on the dataset mtcars: 1. Is an automatic or manual transmission better for MPG? 2. Quantify the MPG difference between automatic and manual transmissions?
+After a short exploratory analysis it is clear that the specific automatic and manual cars present in the sample are affected to a different degree by other features or variables that could have an impact on MPG. Therefore a linear regression model has been built that allow to infere MPG bevhavior of both types of cars under similar conditions of all other characteristics measured on the sample. 
+**CONCLUSION**. The conclusion is that there is not a statistically significant difference in MPG for automatic and manual transmission cars when other important variables are controlled. Given this conclusion, the second question becomes irrelevant.
+In the following sections a brief summary of the full analysis is shown. All details can be found on the annex at the end of the document.
+  
+**DATA PREPARATION**
+
+```{r tidy}
+library(dplyr)
+library(ggplot2)
+## Tidy the data set to change identify and properly define factor variables, also rename variables
+mtcars_fc<-mtcars
+mtcars_fc$vsfc<-as.factor(mtcars$vs)
+mtcars_fc$trans<-as.factor(mtcars$am)
+mtcars_fc$gearfc<-as.factor(mtcars$gear)
+mtcars_fc$carbfc<-as.factor(mtcars$carb)
+mtcars_fc$cylind<-as.factor(mtcars$cyl)
+mtc_tidy<-mtcars_fc[,c(1,3,4,5,6,7,12,13,14,15,16)]
+```
+  
+**EXPLORATORY ANALYSIS**
+
+A simple anaysis of the data, calculating mean MPG by transmission type and their respective confidence intervals, would show that there is no siginificant difference in MPG.
+
+```{r means}
+##Calculate means and student confidence intervals
+sd1<-sd(filter(mtc_tidy,trans==1)$mpg)
+sd0<-sd(filter(mtc_tidy,trans==0)$mpg)
+mean1<-mean(filter(mtc_tidy,trans==1)$mpg)
+mean0<-mean(filter(mtc_tidy,trans==0)$mpg)
+n0<-nrow(filter(mtc_tidy,trans==0))
+n1<-nrow(filter(mtc_tidy,trans==1))
+intconf1<-mean1+c(-1,1)*qt(0.975,df=n1-1)*sd1
+intconf0<-mean0+c(-1,1)*qt(0.975,df=n0-1)*sd0
+intconf1
+intconf0
+```
+
+It can be seen that the confidence intervals overlap. This preliminary analysis points to no significant difference in the MPG means.
+
+But looking at a few charts it is also clear that other characteristics like weight, horse power, etc., may have a biased impact on the means. As an example, below is the chart transmission type vs weight. It shows that the automatic cars also happen to be the heavier ones. Is the apparent lower MPG correlated to transmission, or is the variable weight confounding the results?
+
+```{r boxplots1}
+h<-ggplot(mtc_tidy,aes(trans,wt,fill=trans))
+h1<-h+geom_boxplot()
+h2<-h1+theme(axis.text.x=element_blank())+labs(x="Transmission",y="Weight")
+h3<-h2+theme(legend.position="none")
+h4<-h3+ geom_text(aes(1,1.3,label="Automatic"))
+h5<-h4+ geom_text(aes(2,1.3,label="Manual"))
+h5
+```
+  
+**MODEL PREPARATION AND SELECTION**
+
+Therefore, **to infere MPG performance of both types of transmission cars in equal terms for the other characteristics, a linear regression model is built**. The model starts at its simplest form with just one predictor, and the rest of the predictors are added, the significance of the expanded model evaluated via anova analysis, and this expanded model selected if it is signifcant with respect the previous one and rejected if it is not. THe p-values are the used for this decision and the chosen confidence level will be 95%.
+
+
+```{r chosen model}
+autos_p1<-lm(mpg~trans,data=mtc_tidy)
+autos_p2<-lm(mpg~trans+wt,data=mtc_tidy)
+autos_p3<-lm(mpg~trans+wt+hp,data=mtc_tidy)
+autos_p4<-lm(mpg~trans+wt+hp+drat,data=mtc_tidy)
+autos_p5<-lm(mpg~trans+wt+hp+drat+disp,data=mtc_tidy)
+autos_p6<-lm(mpg~trans+wt+hp+drat+disp+cylind,data=mtc_tidy)
+autos_p7<-lm(mpg~trans+wt+hp+drat+disp+cylind+qsec,data=mtc_tidy)
+autos_p8<-lm(mpg~trans+wt+hp+drat+disp+cylind+qsec+vsfc,data=mtc_tidy)
+autos_p9<-lm(mpg~trans+wt+hp+drat+disp+cylind+qsec+vsfc+gearfc,data=mtc_tidy)
+autos_p10<-lm(mpg~trans+wt+hp+drat+disp+cylind+qsec+vsfc+gearfc+carbfc,data=mtc_tidy)
+anova(autos_p1,autos_p2,autos_p3,autos_p4,autos_p5,autos_p6,autos_p7,autos_p8,autos_p9,autos_p10)
+```
+
+**The last model for which the p-value [ Pr(>|F|}), on each row ] is smaller than 0.05 is the model 3 (autos_p3). This indicates that the null hypothesis of the model autos_p3 being equal to the previous model is rejected at a confidence level of 95%.  Therefore the new model autos_p3 is significant and the new variable is necessary**. This is not the case for any models after autos_p3.
+**Therfore model "autos_p3" is the one selected**.
+
+This model "autos_p3" allows to estimate the MPG of a car based on just three variables, transmission type, weight and horse power.
+As shown below, the adjusted R-squared value is quite high, especially given that it only contains three predictors, which also keeps variance inflation low.
+
+```{r model summary}
+summary(autos_p3)
+```
+
+The requirement of no apparent patterns on the residuals plot is confirmed.
+
+```{r residuals plot}
+plot(predict(autos_p3), resid(autos_p3), pch = '*')
+```
+
+The validity of the model is further confirmed via the normality of the residuals using the Shapiro_Wilk test
+
+```{r residuals normality}
+shapiro.test(autos_p3$residuals)
+```
+
+The null hypothesis of normality of the residuals is not rejected.
+  
+**CONCLUSION**
+
+The regression coefficient for the factor transmission, level automatic, is the intercept.
+The regression coefficient for the level manual transmission is on the row named trans1. It would indicate that the use of a manual transmission car, all other variables equal, would add 2.0837 miles per gallon to the MPG of an automatic car. **However, the p-value Pr(>|t|) for this coefficient is greater than 0.05, so at a 95% confidence level, the null hipothesis that this coefficient for manual transmission equals zero is not rejected**. Therefore the conclusion is that **there is no significant difference in MPG for automatic and manual cars based on the mtcars sample. It is also not pertinent to quantify this difference, which was the second question**.
+
+An additional graph is presented in the annex. It attempts to show in a graphical way, for those interested magazine co-workers who do not have a technical background, how for a sample of specific values of car weight and horse power, the  model predicted 95% confidence interval of MPG for both automatic and manual cars overlap, proving lack of statistically significant difference of those values.
+**This is done via predict function in R, with prediction intervals**.
+
+End of report
+
+ANNEX
+
+First, the graph just mentioned above
+
+```{r sample of confint}
+##Build the dataframe with the predicted MPG values and their predicted confidence intervals for a small sample of weight and hp cobinations.
+wt<-numeric()
+hp<-numeric()
+ll0<-numeric()
+ul0<-numeric()
+ll1<-numeric()
+ul1<-numeric()
+mpg0<-numeric()
+mpg1<-numeric()
+h<-0
+i<-0
+pre0<-numeric()
+pre1<-numeric()
+for(w in 1:round(max(mtc_tidy$wt),0)){
+h<-0
+for(j in 1:6){
+i<-i+1
+h<-h+50
+wt[i]<-w
+hp[i]<-h
+pre0<-predict(autos_p3,newdata=data.frame(wt=w,trans=as.factor(0),hp=h),interval="predict")
+mpg0[i]<-round(pre0[1,1],1)
+ll0[i]<-round(pre0[1,2],1)
+ul0[i]<-round(pre0[1,3],1)
+pre1<-predict(autos_p3,newdata=data.frame(wt=w,trans=as.factor(1),hp=h),interval="predict")
+mpg1[i]<-round(pre1[1,1],1)
+ll1[i]<-round(pre1[1,2],1)
+ul1[i]<-round(pre1[1,3],1)
+}
+}
+mpg_est<-data.frame(wt,hp,mpg0,ll0,ul0,mpg1,ll1,ul1)
+
+me_redux<-mpg_est[seq(1,nrow(mpg_est),by=length(unique(mpg_est$hp))+1),]
+
+##Plot the graph
+wrapper <- function(x, ...) 
+{
+  paste(strwrap(x, ...), collapse = "\n")
+}
+main_title <-" Miles per Gallon: 95% confidence intervals for mpg, automatic and manual cars"
+p<-ggplot(me_redux,aes(x=hp,y=mpg1))
+p0<-geom_segment(aes(x=hp-2,y=me_redux$ll0,xend=hp-2,yend=me_redux$ul0),color="blue",size=2)
+p1<-geom_segment(aes(x=hp+2,y=me_redux$ll1,xend=hp+2,yend=me_redux$ul1),color="springgreen3",size=2)
+p2<-geom_text(aes(50,22,label="wgt=1 ton"),size=3)
+p3<-geom_text(aes(100,18,label="wgt=2 ton"),size=3)
+p4<-geom_text(aes(150,14,label="wgt=3 ton"),size=3)
+p5<-geom_text(aes(200,9,label="wgt=4 ton"),size=3)
+p6<-geom_text(aes(250,4,label="wgt=5 ton"),size=3)
+##p7<-geom_text(aes(300,-1,label="wgt=6 ton"))
+p8<-geom_text(aes(100,10,label="Green=Manual"),color="springgreen3",size=3)
+p9<-geom_text(aes(100,8,label="Blue=Automatic"),color="blue",size=3)
+p10<-ggtitle(wrapper(main_title, width = 60))
+p11<- labs(x="Horse Power",y="Miles per Gallon")
+p12<- scale_y_continuous(breaks=seq(-5,max(me_redux$ul1),by=5))
+##p13<-theme_bw()
+p+p0+p1+p2+p3+p4+p5+p6+p8+p9+p10+p11+p12
+
+
+```
+
+Exploratory analysis, transmissions type vs horse power and transmission vs displacement
+```{r exploratory hp, disp}
+## vs hp
+h<-ggplot(mtc_tidy,aes(trans,hp,fill=trans))
+h1<-h+geom_boxplot()
+h2<-h1+theme(axis.text.x=element_blank())+labs(x="Transmission",y="Horse  Power")
+h3<-h2+theme(legend.position="none")
+h4<-h3+ geom_text(aes(1,1.3,label="Automatic"))
+h5<-h4+ geom_text(aes(2,1.3,label="Manual"))
+h5
+
+##vs disp
+h<-ggplot(mtc_tidy,aes(trans,disp,fill=trans))
+h1<-h+geom_boxplot()
+h2<-h1+theme(axis.text.x=element_blank())+labs(x="Transmission",y="Displacement")
+h3<-h2+theme(legend.position="none")
+h4<-h3+ geom_text(aes(1,1.3,label="Automatic"))
+h5<-h4+ geom_text(aes(2,1.3,label="Manual"))
+h5
+```
+
+COMPARISON OF MODELS adding variables one by one
+```{r all models}
+autos_p1<-lm(mpg~trans,data=mtc_tidy)
+autos_p2<-lm(mpg~trans+wt,data=mtc_tidy)
+anova(autos_p1,autos_p2)
+autos_p3<-lm(mpg~trans+wt+hp,data=mtc_tidy)
+##autos_p3<-lm(mpg~wt+trans+hp,data=mtc_tidy)
+anova(autos_p2,autos_p3)
+autos_p4<-lm(mpg~trans+wt+hp+drat,data=mtc_tidy) ## Not relevant
+anova(autos_p3,autos_p4)
+autos_p5<-lm(mpg~trans+wt+hp+disp,data=mtc_tidy) ## Not relevant!
+anova(autos_p3,autos_p5)
+autos_p6<-lm(mpg~trans+wt+hp+cylind,data=mtc_tidy) ## Not relevant!
+anova(autos_p3,autos_p6)
+autos_p7<-lm(mpg~trans+wt+hp+qsec,data=mtc_tidy) ## Not relevant!
+anova(autos_p3,autos_p7)
+autos_p8<-lm(mpg~trans+wt+hp+vsfc,data=mtc_tidy) ## Not relevant!
+anova(autos_p3,autos_p8)
+autos_p9<-lm(mpg~trans+wt+hp+gearfc,data=mtc_tidy) ## Not relevant!
+anova(autos_p3,autos_p9)
+autos_p10<-lm(mpg~trans+wt+hp+carbfc,data=mtc_tidy) ## Not relevant!
+anova(autos_p3,autos_p10)
+```
+
+
